@@ -116,8 +116,23 @@ player_shot_make_versus(Player, TeamName) :-
     rdf(E, 'http://stellman-greene.com/pbprdf#shotMade', literal(type('http://www.w3.org/2001/XMLSchema#boolean', true))),
     player_is_versing(Player, Game, TeamName).
 
+% Rebounds Versus
+team_rebounders_versus(T, Versus, Players) :- rebounds_versus_team(T, Versus, Stats), insert_sort(Stats, Sorted), first_n(Sorted, 5, Players).
+rebounds_versus_team(T1, T2, R) :- players_on_team(T1, Players), rebounds_versus_team_list(Players, T2, R).
 
-% UTIL
+rebounds_versus_team_list([], _, []).
+rebounds_versus_team_list([H|T], Versus, [(H, X)| T2]) :-
+    player_rebounds_versus(H, Versus, X),
+    rebounds_versus_team_list(T, Versus, T2).
+
+player_rebounds_versus(Player, TeamName, Attempts) :- aggregate_all(count, player_shot_attempt_versus(Player, TeamName), Attempts).
+player_rebound_versus(Player, TeamName) :-
+    rdf(E, 'http://stellman-greene.com/pbprdf#reboundedBy', Player),
+    rdf(E, 'http://stellman-greene.com/pbprdf#inGame', Game),
+    player_is_versing(Player, Game, TeamName).
+
+
+% Util
 % ===========
 player_is_on_team(Player, Team) :-
     rdf(R, 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', 'http://stellman-greene.com/pbprdf#Roster'),
@@ -136,7 +151,6 @@ player_is_versing(Player, Game, TeamName) :-
     rdf(Game, 'http://stellman-greene.com/pbprdf#homeTeam', VersusTeam),
     rdf(Game, 'http://stellman-greene.com/pbprdf#awayTeam', AwayTeam),
     player_is_on_team(Player, AwayTeam).
-
 
 % Comparator sort, implement the compare relationship for data types,
 % where returns >0 if first item is less than second
@@ -158,3 +172,6 @@ comparator(X,Y, 1):- number(X), number(Y), X < Y.
 first_n([], _, []).
 first_n(_, 0, []).
 first_n([H1|T1], N, [H1|R]) :- N > 0, M is (N - 1), first_n(T1, M, R).
+
+append([],L,L).
+append([H|T],L,[H|R]) :- append(T,L,R).
