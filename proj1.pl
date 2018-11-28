@@ -2,6 +2,13 @@
 :- use_module(library(semweb/turtle)).
 :- use_module(library(semweb/rdf_http_plugin)).
 
+% Example queries
+% team_rebounders_versus("Warriors", "Rockets", Players).
+% team_clutchest("Grizzlies", Players).
+% team_shooters_versus("Hawks", "Pelicans", Players).
+
+
+
 :- rdf_load('nba-2018.ttl', [format(turtle)]).
 teamName('http://stellman-greene.com/pbprdf/teams/Magic', "Magic").
 teamName('http://stellman-greene.com/pbprdf/teams/Bulls', "Bulls").
