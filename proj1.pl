@@ -106,6 +106,11 @@ clutch_rating_for_players([H|T], T2) :-
 % Matchup Calculator
 % --------------------
 
+
+% Give the expected winner b/w two teams. This takes into account each teams historical average fg
+%   percentage, average rebounds per game, and average turnovers per game vs. the other team.
+%   If the matchup is deemed close based on these stats, the overall clutchness of each team is used to
+%   determine the winner.
 expected_winner(TN1, TN2, Winner) :-
     shooting_percentage_versus(TN1, TN2, T1Percentage),
     shooting_percentage_versus(TN2, TN1, T2Percentage),
@@ -119,6 +124,7 @@ expected_winner(TN1, TN2, Winner) :-
     calculate_winner(X1, X2, TN1, TN2, Winner).
 
 
+% Given two goodness scores, X1 and X2, determines which team would win in a matchup 
 calculate_winner(X1, X2, TN1, TN2, TN1) :- (X1 - X2) > 10.
 calculate_winner(X1, X2, TN1, TN2, TN2) :- (X2 - X1) > 10.
 calculate_winner(_, _, TN1, TN2, Winner) :-
@@ -128,9 +134,13 @@ calculate_winner(_, _, TN1, TN2, Winner) :-
     clutch_team_rating(Players2, Rating2),
     choose_clutcher_team(Rating1, Rating2, TN1, TN2, Winner).
 
+% Given a list of the top 5 clutch players on a team, assigns a clutchness rating to that team.
+%   Since the most clutch players have high usage in clutch situations, the clutchness rating of 
+%   the team is weighed to be influenced more by its players with highest rating.
 clutch_team_rating([(_,X1),(_,X2),(_,X3),(_,X4),(_,X5)], Rating) :-
     Rating is X1 + 0.5*X2 + 0.25*X3 + 0.125*X4 + 0.0625*X5.
 
+% Gives the team with the highest clutchness rating
 choose_clutcher_team(R1, R2, TN1, TN2, TN1) :- R1 > R2.
 choose_clutcher_team(R1, R2, TN1, TN2, TN2) :- R1 < R2.
 choose_clutcher_team(R1, R2, TN1, TN2, "Tie") :- R1 = R2.
