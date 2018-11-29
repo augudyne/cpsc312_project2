@@ -44,8 +44,12 @@ teamName('http://stellman-greene.com/pbprdf/teams/Bucks', "Bucks").
 %magic numbers
 % Weighing players
 % clutchness
+% weighing fg percentage vs. turnovers vs. rebounds
 mgn(clutchWeight, 0.2).
 mgn(clutchAttemptsScale, 0.6).
+mgn(fgPercentage, 0.25).
+mgn(rbsPerGame, 10).
+mgn(tnsPerGame, 10).
 
 
 % base is <http://stellman-greene.com/>
@@ -99,8 +103,46 @@ clutch_rating_for_players([H|T], T2) :-
     A is 0,
     clutch_rating_for_players(T, T2).
 
+% Matchup Calculator
+% --------------------
+
+expected_winner(TN1, TN2, Winner) :-
+    shooting_percentage_versus(TN1, TN2, T1Percentage),
+    shooting_percentage_versus(TN2, TN1, T2Percentage),
+    rebounds_per_game_versus(TN1, TN2, T1RPG),
+    rebounds_per_game_versus(TN2, TN1, T2RPG),
+    turnovers_per_game_versus(TN1, TN2, T1TPG),
+    turnovers_per_game_versus(TN2, TN1, T2TPG),
+    mgn(fgPercentage, W1), mgn(rbsPerGame, W2), mgn(tnsPerGame, W3),
+    X1 is T1Percentage * W1 + T1RPG * W2 - T1TPG * W3,
+    X2 is T2Percentage * W1 + T2RPG * W2 - T2TPG * W3,
+    calculate_winner(X1, X2, TN1, TN2, Winner).
+
+
+calculate_winner(X1, X2, TN1, TN2, TN1) :- (X1 - X2) > 10.
+calculate_winner(X1, X2, TN1, TN2, TN2) :- (X2 - X1) > 10.
+calculate_winner(_, _, TN1, TN2, Winner) :-
+    team_clutchest(TN1, Players1),
+    team_clutchest(TN2, Players2),
+    clutch_team_rating(Players1, Rating1),
+    clutch_team_rating(Players2, Rating2),
+    choose_clutcher_team(Rating1, Rating2, TN1, TN2, Winner).
+
+clutch_team_rating([(_,X1),(_,X2),(_,X3),(_,X4),(_,X5)], Rating) :-
+    Rating is X1 + 0.5*X2 + 0.25*X3 + 0.125*X4 + 0.0625*X5.
+
+choose_clutcher_team(R1, R2, TN1, TN2, TN1) :- R1 > R2.
+choose_clutcher_team(R1, R2, TN1, TN2, TN2) :- R1 < R2.
+choose_clutcher_team(R1, R2, TN1, TN2, "Tie") :- R1 = R2.
+
 % Shooting percentages
-team_shooters_versus(T, Versus, Players) :- shooting_percentages_versus_team(T, Versus, Stats), insert_sort(Stats, Sorted), first_n(Sorted, 5, Players).
+% --------------------
+
+shooting_percentage_versus(T, Versus, Percentage) :-
+    team_shooters_versus(T, Versus, Players),
+    average_players_stats(Players, Percentage).
+
+team_shooters_versus(T, Versus, Players) :- shooting_percentages_versus_team(T, Versus, Stats), insert_sort(Stats, Players).
 
 shooting_percentages_versus_team(T1, T2, R) :- players_on_team(T1, Players), shooting_percentages_versus_team_list(Players, T2, R).
 shooting_percentages_versus_team_list([], _, []).
@@ -123,8 +165,23 @@ player_shot_make_versus(Player, TeamName) :-
     rdf(E, 'http://stellman-greene.com/pbprdf#shotMade', literal(type('http://www.w3.org/2001/XMLSchema#boolean', true))),
     player_is_versing(Player, Game, TeamName).
 
-% Rebounds Versus
-team_rebounders_versus(T, Versus, Players) :- rebounds_versus_team(T, Versus, Stats), insert_sort(Stats, Sorted), first_n(Sorted, 5, Players).
+% Rebounds
+% --------
+
+% RPG is the rebounds per game that T has while playing against Versus
+rebounds_per_game_versus(T, Versus, RPG) :-
+    total_rebounds_versus(T, Versus, Rebounds),
+    total_games_versus(T, Versus, Games),
+    Games > 0,
+    RPG is (Rebounds / Games).
+    
+
+% Rebounds is the numbers of rebounds that T has while playing against Versus
+total_rebounds_versus(T, Versus, Rebounds) :-
+    team_rebounders_versus(T, Versus, Players),
+    sum_player_stats(Players, Rebounds).
+
+team_rebounders_versus(T, Versus, Players) :- rebounds_versus_team(T, Versus, Stats), insert_sort(Stats, Players).
 rebounds_versus_team(T1, T2, R) :- players_on_team(T1, Players), rebounds_versus_team_list(Players, T2, R).
 
 rebounds_versus_team_list([], _, []).
@@ -132,20 +189,74 @@ rebounds_versus_team_list([H|T], Versus, [(H, X)| T2]) :-
     player_rebounds_versus(H, Versus, X),
     rebounds_versus_team_list(T, Versus, T2).
 
-player_rebounds_versus(Player, TeamName, Attempts) :- aggregate_all(count, player_shot_attempt_versus(Player, TeamName), Attempts).
+player_rebounds_versus(Player, TeamName, Rebounds) :- aggregate_all(count, player_rebound_versus(Player, TeamName), Rebounds).
 player_rebound_versus(Player, TeamName) :-
     rdf(E, 'http://stellman-greene.com/pbprdf#reboundedBy', Player),
     rdf(E, 'http://stellman-greene.com/pbprdf#inGame', Game),
     player_is_versing(Player, Game, TeamName).
 
+% Turnovers
+% ---------
+
+% TPG is the turnovers per game that T has while playing against Versus
+turnovers_per_game_versus(T, Versus, TPG) :-
+    total_turnovers_versus(T, Versus, Turnovers),
+    total_games_versus(T, Versus, Games),
+    Games > 0,
+    TPG is (Turnovers / Games).
+    
+
+% Rebounds is the numbers of rebounds that T has while playing against Versus
+total_turnovers_versus(T, Versus, Turnovers) :-
+    team_turnoverers_versus(T, Versus, Players),
+    sum_player_stats(Players, Turnovers).
+
+team_turnoverers_versus(T, Versus, Players) :- turnovers_versus_team(T, Versus, Stats), insert_sort(Stats, Players).
+turnovers_versus_team(T1, T2, R) :- players_on_team(T1, Players), turnovers_versus_team_list(Players, T2, R).
+
+turnovers_versus_team_list([], _, []).
+turnovers_versus_team_list([H|T], Versus, [(H, X)| T2]) :-
+    player_turnovers_versus(H, Versus, X),
+    turnovers_versus_team_list(T, Versus, T2).
+
+player_turnovers_versus(Player, TeamName, Turnovers) :- aggregate_all(count, player_turnover_versus(Player, TeamName), Turnovers).
+player_turnover_versus(Player, TeamName) :-
+    rdf(E, 'http://stellman-greene.com/pbprdf#turnedOverBy', Player),
+    rdf(E, 'http://stellman-greene.com/pbprdf#inGame', Game),
+    player_is_versing(Player, Game, TeamName).
+
+
+
+% Games is the number of games that TN1 has played against TN2
+total_games_versus(TN1, TN2, Games) :- aggregate_all(count, game_versus(TN1, TN2), Games).
+game_versus(TN1, TN2) :-
+    rdf(E, 'http://stellman-greene.com/pbprdf#inGame', Game),
+    team_is_versing(TN1, TN2, Game).
+
 
 % Util
 % ===========
+sum_player_stats([], 0).
+sum_player_stats([(_,X)|T], Stat) :-
+    number(X),
+    sum_player_stats(T, Stat1),
+    Stat is (Stat1 + X).
+
+average_players_stats(Players, Average) :-
+    sum_player_stats(Players, Sum),
+    length_player_list(Players, Length),
+    Length > 0,
+    Average is (Sum / Length).
+
+length_player_list([], 0).
+length_player_list([H|T], Length) :-
+    length_player_list(T, Length1),
+    Length is (Length1 + 1).
+
 player_is_on_team(Player, Team) :-
     rdf(R, 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type', 'http://stellman-greene.com/pbprdf#Roster'),
     rdf(R, 'http://stellman-greene.com/pbprdf#hasPlayer', Player),
     rdf(R, 'http://stellman-greene.com/pbprdf#rosterTeam', Team).
-
 
 player_is_versing(Player, Game, TeamName) :-
     teamName(VersusTeam, TeamName),
@@ -158,6 +269,18 @@ player_is_versing(Player, Game, TeamName) :-
     rdf(Game, 'http://stellman-greene.com/pbprdf#homeTeam', VersusTeam),
     rdf(Game, 'http://stellman-greene.com/pbprdf#awayTeam', AwayTeam),
     player_is_on_team(Player, AwayTeam).
+
+team_is_versing(TN1, TN2, Game) :-
+    teamName(HomeTeam, TN1),
+    teamName(AwayTeam, TN2),
+    rdf(Game, 'http://stellman-greene.com/pbprdf#homeTeam', HomeTeam),
+    rdf(Game, 'http://stellman-greene.com/pbprdf#awayTeam', AwayTeam).
+
+team_is_versing(TN1, TN2, Game) :-
+    teamName(AwayTeam, TN1),
+    teamName(HomeTeam, TN2),
+    rdf(Game, 'http://stellman-greene.com/pbprdf#awayTeam', AwayTeam),
+    rdf(Game, 'http://stellman-greene.com/pbprdf#homeTeam', HomeTeam).
 
 % Comparator sort, implement the compare relationship for data types,
 % where returns >0 if first item is less than second
