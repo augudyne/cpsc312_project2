@@ -3,14 +3,18 @@
 :- use_module(library(semweb/rdf_http_plugin)).
 
 % Example queries
+% ----------------
+
 % expected_winner("Raptors", "Hawks", Winner).
+
+% other queries include:
 % team_rebounders_versus("Warriors", "Rockets", Players).
 % team_clutchest("Grizzlies", Players).
 % team_shooters_versus("Hawks", "Pelicans", Players).
 % shooting_percentage_versus("Hawks", "Jazz", Percentage).
 
-
-
+% Loading the data and some set-up
+% --------------------------------
 :- rdf_load('nba-2018.ttl', [format(turtle)]).
 teamName('http://stellman-greene.com/pbprdf/teams/Magic', "Magic").
 teamName('http://stellman-greene.com/pbprdf/teams/Bulls', "Bulls").
@@ -56,13 +60,15 @@ mgn(tnsPerGame, 10).
 % base is <http://stellman-greene.com/>
 % any with pbprdf http://stellman-greene.com/pbprdf#hasPlayer
 % any with rdfs: has <http://www.w3.org/2000/01/rdf-schema#> preceeding
+
+% True if player P plays for the team with name TN
 played_for_team(P, TN) :-
     rdf(Roster, 'http://stellman-greene.com/pbprdf#rosterTeam', T), 
     teamName(T, TN), !,
     rdf(Roster, 'http://stellman-greene.com/pbprdf#hasPlayer', P).
 
+% Players is the list of players that play on the team with name TN
 players_on_team(TN, Players) :-  aggregate_all(set(X), played_for_team(X, TN), Players).
-
 
 % Matchup Calculator
 % --------------------
@@ -108,6 +114,7 @@ choose_clutcher_team(R1, R2, TN1, TN2, "Tie") :- R1 = R2.
 % Clutchness
 % ----------
 
+% True if E is a shot made within the last M minutes of a game by player P
 shot_made_with_min_left(P, M, E) :-
     rdf(E, 'http://stellman-greene.com/pbprdf#period', literal(type('http://www.w3.org/2001/XMLSchema#int', '4'))),
     rdf(E, 'http://stellman-greene.com/pbprdf#secondsLeftInPeriod', literal(type('http://www.w3.org/2001/XMLSchema#int', T))),
@@ -117,6 +124,7 @@ shot_made_with_min_left(P, M, E) :-
         literal(type('http://www.w3.org/2001/XMLSchema#boolean', true))),
     rdf(E, 'http://stellman-greene.com/pbprdf#shotBy', P).
 
+% True if E is a shot attempt within the last M minutes of a game by player p
 shot_attempt_with_min_left(P, M, E) :-
     rdf(E, 'http://stellman-greene.com/pbprdf#period', literal(type('http://www.w3.org/2001/XMLSchema#int', '4'))),
     rdf(E, 'http://stellman-greene.com/pbprdf#secondsLeftInPeriod', literal(type('http://www.w3.org/2001/XMLSchema#int', T))),
@@ -124,19 +132,28 @@ shot_attempt_with_min_left(P, M, E) :-
     X =< (M * 60),
     rdf(E, 'http://stellman-greene.com/pbprdf#shotBy', P).
 
+% Players is a list of the 5 clutchest players on a team and their clutchness rating
+% Clutchness rating is determined by a players ability to make shots in the last minute of games
 team_clutchest(T, Players) :- clutch_players_on_team(T, L), insert_sort(L, Sorted), first_n(Sorted, 5, Players).
 
+% N is the number of clutch shots player P has made.
 clutch_shots_by_player(P, N) :- aggregate_all(count, shot_made_with_min_left(P, 1, _), N).
 
+% N is the number of clutch shot attempts by player P.
 clutch_attempts_by_player(P, N) :- aggregate_all(count, shot_attempt_with_min_left(P, 1, _), N).
 
+% R is the clutchness rating of player P.
 player_clutch_rating(P, R) :- clutch_percentage_of_player(P, Percentage), clutch_attempts_by_player(P, N), mgn(clutchAttemptsScale, W), R is ((1 - W)*Percentage) + W*N.
 
 get_percentage(_, A, -1) :- A is 0.
 get_percentage(M, A, R) :- A > 0, R is (M / A) * 100.
 
+% R is the percentage of clutch shots that player P makes
 clutch_percentage_of_player(P, R) :- clutch_shots_by_player(P, Made), clutch_attempts_by_player(P, Attempts), get_percentage(Made, Attempts, R).
-% list/team operations
+
+% list/team operations:
+
+% List is a list of all the players on Team and their clutchness rating
 clutch_players_on_team(Team, List) :- aggregate_all(set(X), played_for_team(X, Team), Players), clutch_rating_for_players(Players, List).
 
 clutch_rating_for_players([], []).
@@ -221,7 +238,7 @@ turnovers_per_game_versus(T, Versus, TPG) :-
     TPG is (Turnovers / Games).
     
 
-% Rebounds is the numbers of rebounds that T has while playing against Versus
+% Turnovers is the numbers of turnovers that T has while playing against Versus
 total_turnovers_versus(T, Versus, Turnovers) :-
     team_turnoverers_versus(T, Versus, Players),
     sum_player_stats(Players, Turnovers).
